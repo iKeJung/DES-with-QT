@@ -153,6 +153,7 @@ void MainWindow::on_pushButton_Encrypt_clicked()
         }else{
             k.truncate(16);
             bool ok;
+            qDebug() << k;
             key = k.toULongLong(&ok,16);
             if(!ok){
                 QMessageBox::warning(this,"Warning","Conversion from hex to integer not possible with this key.");
@@ -160,12 +161,38 @@ void MainWindow::on_pushButton_Encrypt_clicked()
         }
 
         //qDebug() << text;
+        QString report;
+        QTextStream a(&report);
         QElapsedTimer timer;
         timer.start();
+        ui->textBrowser->append("Encrypting text...");
         QVector<quint64> encoded = cipher->encode(text,key);
-        qDebug() << "The slow operation took" << timer.elapsed() << "milliseconds";
-        qDebug() << "The slow operation took" << timer.nsecsElapsed() << "nanoseconds";
+        a << "The encryption operation took " << timer.elapsed() << " milliseconds.";
+
+        ui->textBrowser->append(report);
         putEncryptedText(encoded);
+
+
+        QVector<quint64> tVector = cipher->stringToQuint64Vector(text);
+        //qDebug() << encoded.size() << tVector.size();
+        quint64 c = 0;
+        if(encoded.size() != tVector.size()){
+            return;
+        }
+        for (int x = 0; x < encoded.size(); ++x) {
+            quint64 vXor = encoded[x]^tVector[x];
+            QBitArray bits = cipher->quintToArray(vXor);
+            for (int y = 0; y < bits.size(); y++) {
+                if(bits[y]){
+                    c++;
+                }
+            }
+        }
+
+        report = "";
+        double value = c/(double)(encoded.size()*64);
+        a << "Encryption strengh: " << value*100 <<"%.\n";
+        ui->textBrowser->append(report);
     }
 }
 
@@ -218,7 +245,16 @@ void MainWindow::on_pushButton_Decrypt_clicked()
                 QMessageBox::warning(this,"Warning","Conversion from hex to integer not possible with this key.");
             }
         }
-        //qDebug() << text;
-        putDecryptedText(cipher->decode(cipher->stringToQuint64Vector(text),key));
+        QString report;
+        QTextStream a(&report);
+        QElapsedTimer timer;
+        timer.start();
+        ui->textBrowser->append("Decrypting text...");
+        QString decripted = cipher->decode(cipher->stringToQuint64Vector(text),key);
+        putDecryptedText(decripted);
+        a << "The decrypting operation took " << timer.elapsed() << " milliseconds.\n";
+        ui->textBrowser->append(report);
+
+
     }
 }

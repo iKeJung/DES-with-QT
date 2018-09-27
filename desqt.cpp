@@ -2,7 +2,76 @@
 
 DesQT::DesQT()
 {
+    keyShift = readTable(TablesLocation::keyShift);
+    expandWord = readTable(TablesLocation::expandWord);
+    permute1 = readTable(TablesLocation::permute1);
+    permute2 = readTable(TablesLocation::permute2);
+    permuteKey1 = readTable(TablesLocation::permuteKey1);
+    permuteKey2 = readTable(TablesLocation::permuteKey2);
+    permuteSbox = readTable(TablesLocation::permuteSbox);
+    for (int x = 0; x < TablesLocation::sBox.size(); ++x) {
+        sBox.push_back(readSBoxTable(TablesLocation::sBox[x]));
+        //qDebug() << sBox[x] << "\n";
+    }
 
+
+
+}
+
+QVector<int> DesQT::readTable(QString fileName)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)){
+            qDebug() << "ERROR - file not found.";
+            return QVector<int>();
+    }
+
+    QTextStream in(&file);
+    QString line = in.readLine();
+    QVector<int> table;
+    while (!line.isNull()) {
+       //qDebug() << line;
+       QStringList list = line.split(" ");
+       for (int x = 0; x < list.size(); ++x) {
+           bool ok;
+           table << list[x].toInt(&ok);
+           if(!ok){
+               qDebug() << "ERROR - impossible conversion to integer.";
+           }
+       }
+       line = in.readLine();
+    }
+    file.close();
+    return table;
+}
+
+QVector<QVector<int> > DesQT::readSBoxTable(QString fileName)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)){
+        qDebug() << "ERROR - file not found.";
+        return QVector<QVector<int> >();
+    }
+
+    QTextStream in(&file);
+    QString line = in.readLine();
+    QVector<QVector<int>> table;
+    while (!line.isNull()) {
+       //qDebug() << line;
+       QStringList list = line.split(" ");
+       QVector<int> row;
+       for (int x = 0; x < list.size(); ++x) {
+           bool ok;
+           row << list[x].toInt(&ok);
+           if(!ok){
+               qDebug() << "ERROR - impossible conversion to integer.";
+           }
+       }
+       table << row;
+       line = in.readLine();
+    }
+    file.close();
+    return table;
 }
 
 QVector <quint64> DesQT::encode(QString data, quint64 key)
@@ -10,31 +79,26 @@ QVector <quint64> DesQT::encode(QString data, quint64 key)
     QVector <QBitArray> encoded;
     QVector<quint64> words = stringToQuint64Vector(data);
 
-    QElapsedTimer timer;
-    timer.start();
     QVector<QBitArray> keys = makeKeys(key);
-    qDebug() << "The slow operation took" << timer.elapsed() << "milliseconds";
-    qDebug() << "The slow operation took" << timer.nsecsElapsed() << "nanoseconds";
 
     for (int x = 0; x < words.size(); ++x) {        
         QBitArray bitWords = quintToArray(words[x]);
-
-
-        QBitArray word = doPermutation(bitWords,TablesLocation::permute1);
+        //qDebug() << bitWords.size();
+        QBitArray word = doPermutation(bitWords,permute1);
 
         QBitArray left(word.size()/2);
-        for (int x = 0; x < word.size()/2; ++x) {
-            left[x] = word[x];
+        for (int c = 0; c < word.size()/2; ++c) {
+            left[c] = word[c];
         }
         QBitArray right(word.size()/2);
-        for (int x = word.size()/2; x < word.size(); ++x) {
-            right[x-word.size()/2] = word[x];
+        for (int c = word.size()/2; c < word.size(); ++c) {
+            right[c-word.size()/2] = word[c];
         }
         for (int c = 0; c < 16; ++c) {
 
             QBitArray nextLeft = right;
 
-            QBitArray expandedRight = doPermutation(right,TablesLocation::expandWord);
+            QBitArray expandedRight = doPermutation(right,expandWord);
 
             expandedRight ^= keys[c];
 
@@ -45,19 +109,19 @@ QVector <quint64> DesQT::encode(QString data, quint64 key)
                     sboxArray[j] = expandedRight[(6*i)+j];
                 }
 
-                QBitArray sboxAnswer = sBox(sboxArray, TablesLocation::sBox[i]);
+                QBitArray sboxAnswer = doSBox(sboxArray, sBox[i]);
 
                 sboxconcat = concatBitArray(sboxconcat,sboxAnswer);
             }
 
-            sboxconcat = doPermutation(sboxconcat,TablesLocation::permuteSbox);
+            sboxconcat = doPermutation(sboxconcat,permuteSbox);
 
             right = left ^ sboxconcat;
             left = nextLeft;
         }
         word = concatBitArray(right,left);
 
-        word = doPermutation(word, TablesLocation::permute2);
+        word = doPermutation(word, permute2);
         encoded << word;
     }
 
@@ -76,7 +140,7 @@ QVector<QBitArray> DesQT::makeKeys(quint64 key)
     QVector<QBitArray> keys;
     QBitArray keyVector = quintToArray(key);
     //qDebug() << keyVector;
-    QBitArray key56 = doPermutation(keyVector,TablesLocation::permuteKey1);
+    QBitArray key56 = doPermutation(keyVector,permuteKey1);
     //qDebug() << key56;
     QBitArray keyLeft(key56.size()/2);
     for (int x = 0; x < key56.size()/2; ++x) {
@@ -86,7 +150,7 @@ QVector<QBitArray> DesQT::makeKeys(quint64 key)
     for (int x = key56.size()/2; x < key56.size(); ++x) {
         keyRight[x-key56.size()/2] = key56[x];
     }
-
+#if 0
     QFile file(TablesLocation::keyShift);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)){
            return keys;
@@ -94,16 +158,14 @@ QVector<QBitArray> DesQT::makeKeys(quint64 key)
 
     QTextStream in(&file);
     QString line = in.readLine();
-
-    while (!line.isNull()) {
-        int n = line.toInt();
+#endif
+    for (int x = 0; x < keyShift.size(); ++x) {
+        int n = keyShift[x];
         keyLeft = shiftL(keyLeft,n);
         keyRight = shiftL(keyRight,n);
         //qDebug() << keyLeft << keyRight << n;
         QBitArray concat = concatBitArray(keyLeft,keyRight);
-        keys << doPermutation(concat, TablesLocation::permuteKey2);
-
-        line = in.readLine();
+        keys << doPermutation(concat, permuteKey2);
     }
     //qDebug() << "\nKEYS\n" << keys << "\n";
 
@@ -115,7 +177,7 @@ QVector<QBitArray> DesQT::makeKeys(quint64 key)
 QString DesQT::decode(QVector<quint64> words, quint64 key)
 {
     QVector <QBitArray> decoded;
-    qDebug() << "DECODING " << words;
+    //qDebug() << "DECODING " << words;
     QVector<QBitArray> keys = makeKeys(key);
 
     for (int x = 0; x < words.size(); ++x) {
@@ -123,7 +185,7 @@ QString DesQT::decode(QVector<quint64> words, quint64 key)
         //qDebug() << "Decoding" << bitWords;
         //qDebug() << "WORD: " << bitWords;
 
-        QBitArray word = doPermutation(bitWords,TablesLocation::permute1);
+        QBitArray word = doPermutation(bitWords,permute1);
         //qDebug() << "IP: " << word;
 
         QBitArray left(word.size()/2);
@@ -138,7 +200,7 @@ QString DesQT::decode(QVector<quint64> words, quint64 key)
 
             QBitArray nextLeft = right;
 
-            QBitArray expandedRight = doPermutation(right,TablesLocation::expandWord);
+            QBitArray expandedRight = doPermutation(right,expandWord);
 
             //qDebug() << "E(R):" << expandedRight;
 
@@ -154,14 +216,14 @@ QString DesQT::decode(QVector<quint64> words, quint64 key)
                 }
                 //qDebug() << "Sbox Array:" << sboxArray;
 
-                QBitArray sboxAnswer = sBox(sboxArray, TablesLocation::sBox[i]);
+                QBitArray sboxAnswer = doSBox(sboxArray, sBox[i]);
 
                 //qDebug() << sboxAnswer;
                 sboxconcat = concatBitArray(sboxconcat,sboxAnswer);
             }
 
             //qDebug() << "S(B):" << sboxconcat;
-            sboxconcat = doPermutation(sboxconcat,TablesLocation::permuteSbox);
+            sboxconcat = doPermutation(sboxconcat,permuteSbox);
             //qDebug() << "F S(B):" << sboxconcat;
 
             right = left ^ sboxconcat;
@@ -174,12 +236,12 @@ QString DesQT::decode(QVector<quint64> words, quint64 key)
         word = concatBitArray(right,left);
         //qDebug() << "RL" << word;
 
-        word = doPermutation(word, TablesLocation::permute2);
+        word = doPermutation(word, permute2);
         //qDebug() << "IP-1" << word;
         decoded << word;
     }
 
-    qDebug() << "DECODED ANSWER :" << decoded << "\n";
+    //qDebug() << "DECODED ANSWER :" << decoded << "\n";
     QString decodedText = "";
     for (int x = 0; x < decoded.size(); ++x) {
         QBitArray temp = decoded[x];
@@ -189,8 +251,9 @@ QString DesQT::decode(QVector<quint64> words, quint64 key)
     return decodedText;
 }
 
-QBitArray DesQT::doPermutation(QBitArray array, QString fileName)
+QBitArray DesQT::doPermutation(QBitArray array, QVector<int> table)
 {
+    #if 0
     //qDebug() << "OPENING FILE " << fileName;
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)){
@@ -216,21 +279,23 @@ QBitArray DesQT::doPermutation(QBitArray array, QString fileName)
     }
     //qDebug() << table << table.size();
     file.close();
+    #endif
+
     QBitArray newArray(table.size());
     for (int x = 0; x < table.size(); ++x) {
         if(table[x]-1>=array.size()){
+            qDebug() << table.size() << "Array:" << array.size() << "valor:"<< table[x];
             qDebug() << "ERROR - invalid values in transition table.";
         }
         newArray[x] = array[table[x]-1];
     }
     //qDebug() << newArray;
     return newArray;
-
 }
 
-QBitArray DesQT::sBox(QBitArray array, QString fileName)
+QBitArray DesQT::doSBox(QBitArray array, QVector<QVector<int> > table)
 {
-    //qDebug() << "OPENING FILE " << fileName;
+#if 0
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)){
         qDebug() << "ERROR - file not found.";
@@ -257,6 +322,7 @@ QBitArray DesQT::sBox(QBitArray array, QString fileName)
     }
     //qDebug()<< "STable: " << table << table.size();
     file.close();
+#endif
     QBitArray i(2);
     i[0] = array[0];
     i[1] = array [5];
